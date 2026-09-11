@@ -1,0 +1,351 @@
+:root {
+  --ink: #241c17;
+  --paper: #faf5ec;
+  --card: #ffffff;
+  --coral: #f2503e;
+  --sun: #fdbb2c;
+  --teal: #0fa88f;
+  --pink: #f26a98;
+  --ink-dim: rgba(36, 28, 23, 0.6);
+  --ink-faint: rgba(36, 28, 23, 0.35);
+  --line: rgba(36, 28, 23, 0.14);
+
+  --display: "Fraunces", serif;
+  --body: "Inter", sans-serif;
+  --mono: "IBM Plex Mono", monospace;
+
+  /* soft ambient shadows only - no hard offset "sticker" shadow */
+  --shadow: 0 24px 50px -20px rgba(36, 28, 23, 0.22);
+  --shadow-sm: 0 10px 24px -12px rgba(36, 28, 23, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle, rgba(36, 28, 23, 0.045) 1.3px, transparent 1.3px) 0 0 / 26px 26px,
+    var(--paper);
+  color: var(--ink);
+  font-family: var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6vh 24px 40px;
+  position: relative;
+}
+
+/* ---------- header ---------- */
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.brand-mark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: -0.01em;
+}
+
+.brand-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--coral);
+  align-self: center;
+}
+
+.subhead {
+  font-family: var(--body);
+  font-size: 13.5px;
+  color: var(--ink-dim);
+  margin: 8px 0 34px;
+  text-align: center;
+  max-width: 340px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+
+/* ---------- toggle row (shared: language + persona) ---------- */
+
+.toggle-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.field-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-faint);
+  margin: 0 0 8px;
+  text-align: center;
+}
+
+.pill-row {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.pill {
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 9px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.pill:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.pill:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.pill.active {
+  background: var(--sun);
+  border-color: var(--sun);
+  color: var(--ink);
+}
+
+.pill.persona.active {
+  background: var(--pink);
+  border-color: var(--pink);
+  color: var(--card);
+}
+
+.pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ---------- presence card (was: orb) ---------- */
+
+.presence-wrap {
+  width: 100%;
+  max-width: 320px;
+  margin-bottom: 36px;
+}
+
+.presence-card {
+  border: 1.5px solid var(--line);
+  border-radius: 24px;
+  background: #fdf6e8;
+  box-shadow: var(--shadow-sm);
+  padding: 42px 20px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.presence {
+  width: 126px;
+  height: 126px;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s ease;
+}
+
+.presence.idle {
+  animation: breathe 4.5s ease-in-out infinite;
+}
+
+.presence.speaking {
+  transform: scale(1.04);
+  background: var(--coral);
+}
+
+.presence.listening {
+  transform: scale(1.02);
+  background: var(--teal);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.025);
+  }
+}
+
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+}
+
+.bar {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--ink-faint);
+  height: 8px;
+  transition: height 0.15s ease, background 0.2s ease;
+}
+
+.presence.listening .bar,
+.presence.speaking .bar {
+  background: var(--card);
+  animation: eq 0.9s ease-in-out infinite;
+}
+
+.bar:nth-child(1) {
+  animation-delay: 0s;
+}
+.bar:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.bar:nth-child(3) {
+  animation-delay: 0.24s;
+}
+.bar:nth-child(4) {
+  animation-delay: 0.36s;
+}
+.bar:nth-child(5) {
+  animation-delay: 0.18s;
+}
+
+@keyframes eq {
+  0%,
+  100% {
+    height: 8px;
+  }
+  50% {
+    height: 24px;
+  }
+}
+
+.status-chip {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--ink);
+  color: var(--card);
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+
+/* ---------- connect button ---------- */
+
+.connect-btn {
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  padding: 15px 44px;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.connect-btn.connect {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.connect-btn.connect:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.connect-btn.disconnect {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+.connect-btn.disconnect:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.connect-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+  transform: none;
+}
+
+/* ---------- footer / error ---------- */
+
+.footnote {
+  margin-top: 40px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.error-banner {
+  margin-top: 20px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1.5px solid var(--coral);
+  box-shadow: var(--shadow-sm);
+  color: var(--coral);
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 340px;
+  text-align: center;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presence.idle {
+    animation: none;
+  }
+  .presence,
+  .connect-btn,
+  .pill,
+  .bar {
+    transition: none;
+    animation: none;
+  }
+}
