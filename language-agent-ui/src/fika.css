@@ -586,8 +586,8 @@ body {
 
 .stage-mentions {
   display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 72px;
+  grid-template-columns: 1fr 330px;
+  gap: 0;
   align-items: center;
 }
 
@@ -598,10 +598,10 @@ body {
 .mentions {
   display: flex;
   flex-direction: column;
-  align-self: stretch;
-  justify-content: flex-start;
-  padding-top: 8px;
-  min-height: 0;
+  align-self: center;
+  border-left: 1px solid var(--hairline);
+  padding: 4px 0 4px 44px;
+  max-height: min(62vh, 560px);
   overflow-y: auto;
 }
 
@@ -622,8 +622,7 @@ body {
 .mentions-foot {
   color: #a39c91;
   font-size: 18px;
-  padding-top: 20px;
-  margin-top: auto;
+  padding-top: 22px;
 }
 
 .card {
@@ -655,6 +654,39 @@ body {
 .card-note {
   padding-top: 3px;
   font-size: 19px;
+}
+
+
+/* ---------- scrollbars ---------- */
+
+.mentions,
+.board-page {
+  scrollbar-width: thin;
+  scrollbar-color: #cec4b0 transparent;
+}
+
+.mentions::-webkit-scrollbar,
+.board-page::-webkit-scrollbar {
+  width: 8px;
+}
+
+.mentions::-webkit-scrollbar-track,
+.board-page::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mentions::-webkit-scrollbar-thumb,
+.board-page::-webkit-scrollbar-thumb {
+  background: #cec4b0;
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.mentions::-webkit-scrollbar-thumb:hover,
+.board-page::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
 }
 
 /* ---------- speaker mark ---------- */
@@ -783,6 +815,14 @@ body {
   .stage-board,
   .stage-mentions {
     grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .mentions {
+    border-left: none;
+    border-top: 1px solid var(--hairline);
+    padding: 24px 0 0;
+    max-height: none;
   }
 
   .board {

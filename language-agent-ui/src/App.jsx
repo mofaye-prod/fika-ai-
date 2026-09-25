@@ -42,6 +42,11 @@ const STATUS_TEXT = {
   disconnecting: "Ending…",
 };
 
+/** ?demo=board fills the panels with sample content. */
+function isDemo() {
+  return new URLSearchParams(window.location.search).get("demo") === "board";
+}
+
 /** Greeting line in the header: "Tuesday evening". */
 function whenItIs() {
   const now = new Date();
@@ -466,7 +471,7 @@ export default function App() {
 
   // Open with ?demo=board to see the panel without the backend wired up.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("demo") === "board") {
+    if (isDemo()) {
       setBoard(DEMO_BOARD);
       setBoardSubject("passé composé — être");
       setMentions(DEMO_MENTIONS);
@@ -530,9 +535,11 @@ export default function App() {
 
   const handleConnect = useCallback(async () => {
     setError(null);
-    setBoard([]);
-    setBoardSubject(null);
-    setMentions([]);
+    if (!isDemo()) {
+      setBoard([]);
+      setBoardSubject(null);
+      setMentions([]);
+    }
     setConnectionState("connecting");
 
     try {
