@@ -44,6 +44,13 @@ from pipecat.workers.runner import WorkerRunner
 
 load_dotenv(override=True) 
 
+from supabase import create_client
+
+supabase = create_client(
+    os.getenv("SUPABASE_URL"),
+    os.getenv("SUPABASE_KEY"),
+)
+
 CURRENT_LANGUAGE = "en"  # change to "fr" to test French 
 
 LANGUAGE_CONFIG = {
@@ -224,6 +231,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("Client disconnected")
+        try:
+            supabase.table("sessions").insert({
+                "language": CURRENT_LANGUAGE,
+                 "transcript": context.messages,
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to save session to Supabase: {e}")
         await worker.cancel()
 
     runner = WorkerRunner(handle_sigint=False)

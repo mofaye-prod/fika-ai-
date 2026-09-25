@@ -7,6 +7,7 @@ dependencies = [
     "nltk<3.10.1",
     "pipecat-ai[anthropic,cartesia,daily,deepgram,elevenlabs,openai,runner,silero,webrtc]>=1.4.0",
     "pipecatcloud",
+    "supabase>=2.31.0",
 ]
 
 [dependency-groups]
