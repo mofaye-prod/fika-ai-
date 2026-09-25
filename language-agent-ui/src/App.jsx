@@ -129,6 +129,279 @@ function SpeakerMark({ name, size = 32, className = "" }) {
   );
 }
 
+
+/* ---------------------------------------------------------------
+ * The session board.
+ *
+ * Entries arrive from the teacher as she writes, before she speaks
+ * about them. Four kinds cover what a language tutor actually puts
+ * on a board:
+ *
+ *   { kind: "phrase",     text, gloss }
+ *   { kind: "correction", wrong, right, aside }
+ *   { kind: "table",      title, rows: [[left, right], ...] }
+ *   { kind: "list",       title, items: [..] }
+ *
+ * `aside` and `gloss` render as Margot's handwriting.
+ * ------------------------------------------------------------- */
+
+const DEMO_BOARD = [
+  { id: 1, kind: "phrase", text: "aller au marché", gloss: "to go to the market" },
+  {
+    id: 2,
+    kind: "correction",
+    wrong: "J'ai allé au marché",
+    right: "Je suis allé au marché",
+    aside: "aller → toujours être",
+  },
+  {
+    id: 3,
+    kind: "table",
+    title: "Aller — passé composé",
+    rows: [
+      ["je", "suis allé(e)"],
+      ["tu", "es allé(e)"],
+      ["il / elle", "est allé / allée"],
+      ["nous", "sommes allé(e)s"],
+    ],
+  },
+  {
+    id: 4,
+    kind: "list",
+    title: "Others that take être",
+    items: ["venir", "partir", "rester", "arriver", "entrer", "monter"],
+  },
+];
+
+/** A single thing written on the board. */
+function BoardEntry({ entry, isLatest, index }) {
+  // a fraction of a degree, alternating, so entries read as written
+  const tilt = (index % 2 === 0 ? -1 : 1) * (0.15 + (index % 3) * 0.05);
+
+  return (
+    <div
+      className={`entry ${isLatest ? "latest" : ""}`}
+      style={{ transform: `rotate(${tilt}deg)` }}
+    >
+      {isLatest && (
+        <div className="entry-flag">
+          <svg width="26" height="12" viewBox="0 0 26 12" aria-hidden="true">
+            <path
+              d="M1 6h21M17 2l5 4-5 4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className="micro">Just now</span>
+        </div>
+      )}
+
+      {entry.kind === "phrase" && (
+        <>
+          <div className="micro">Phrase</div>
+          <div className="entry-line">{entry.text}</div>
+          {entry.gloss && <div className="hand">{entry.gloss}</div>}
+        </>
+      )}
+
+      {entry.kind === "correction" && (
+        <>
+          <div className="micro">Your sentence</div>
+          <div className="wrong-row">
+            <span className="struck">{entry.wrong}</span>
+          </div>
+          <div className="entry-line circled">
+            <span className="circled-text">
+              {entry.right}
+              <svg
+                className="circle"
+                viewBox="0 0 100 40"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M4 20C4 9 24 3 50 3s46 6 46 17-19 17-46 17S4 31 4 20z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+            </span>
+          </div>
+          {entry.aside && <div className="hand">{entry.aside}</div>}
+        </>
+      )}
+
+      {entry.kind === "table" && (
+        <>
+          <div className="micro">{entry.title}</div>
+          <div className="entry-table">
+            {entry.rows.map(([left, right], i) => (
+              <div className="table-row" key={i}>
+                <span className="table-key">{left}</span>
+                <span>{right}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {entry.kind === "list" && (
+        <>
+          <div className="micro">{entry.title}</div>
+          <div className="entry-list">{entry.items.join(" · ")}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The ruled page the entries live on. */
+function Board({ entries, subject }) {
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [entries.length]);
+
+  return (
+    <div className="board">
+      <div className="board-head">
+        <div className="board-head-left">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+              d="M2.5 11.5l7-7 2.5 2.5-7 7-3 .5z"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className="micro">Board</span>
+        </div>
+        {subject && <span className="hand board-subject">{subject}</span>}
+      </div>
+
+      <div className="board-page">
+        <div className="board-margin" />
+        {entries.length === 0 ? (
+          <div className="board-empty hand">
+            Anything worth keeping will land here.
+          </div>
+        ) : (
+          entries.map((entry, i) => (
+            <BoardEntry
+              key={entry.id ?? i}
+              entry={entry}
+              index={i}
+              isLatest={i === entries.length - 1}
+            />
+          ))
+        )}
+        <div ref={endRef} />
+      </div>
+    </div>
+  );
+}
+
+
+/* ---------------------------------------------------------------
+ * Friend mode: things she mentioned.
+ *
+ * Same delivery as the board, deliberately quieter — no highlight,
+ * no auto-scroll, nothing asking to be read mid-conversation.
+ *
+ *   { kind: "song" | "place" | "food" | "thing", title, note }
+ * ------------------------------------------------------------- */
+
+const DEMO_MENTIONS = [
+  { id: 1, kind: "song", title: "Angèle — Balance ton quoi", note: "stuck in her head all week" },
+  { id: 2, kind: "place", title: "La Croix-Rousse", note: "her quartier — the hill with all the stairs" },
+  { id: 3, kind: "food", title: "une quenelle", note: "what she ate Sunday — very lyonnais" },
+];
+
+function MentionGlyph({ kind }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.4,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+  return (
+    <svg className="glyph" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      {kind === "song" && (
+        <>
+          <path d="M6.5 13V3.5l8-1.6V11" {...common} />
+          <ellipse cx="4.4" cy="13.4" rx="2.6" ry="2.1" {...common} />
+          <ellipse cx="12.4" cy="11.4" rx="2.6" ry="2.1" {...common} />
+        </>
+      )}
+      {kind === "place" && (
+        <>
+          <path d="M9 16s5.5-5.4 5.5-9A5.5 5.5 0 0 0 3.5 7c0 3.6 5.5 9 5.5 9z" {...common} />
+          <circle cx="9" cy="7" r="1.8" {...common} />
+        </>
+      )}
+      {kind === "food" && (
+        <>
+          <path d="M4 2.5v5a2 2 0 0 0 4 0v-5M6 7.5V15.5" {...common} />
+          <path d="M13 15.5V2.8c-1.6.8-2.4 2.4-2.4 4.4s.8 2.6 2.4 2.6" {...common} />
+        </>
+      )}
+      {(!kind || kind === "thing") && (
+        <>
+          <path d="M3.5 4.5h11v9h-11z" {...common} />
+          <path d="M6 8h6M6 11h4" {...common} />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function Mentions({ items }) {
+  return (
+    <aside className="mentions">
+      <div className="mentions-head">
+        <span className="micro">She mentioned</span>
+        <svg width="126" height="9" viewBox="0 0 126 9" aria-hidden="true">
+          <path
+            d="M2 5.4c22-2.6 44-3.4 66-2.6s36 2.2 56 1"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="hand mentions-empty">
+          Anything she brings up — a song, a place — lands here.
+        </p>
+      ) : (
+        items.map((m, i) => (
+          <div
+            className="card"
+            key={m.id ?? i}
+            style={{ transform: `rotate(${(i % 2 === 0 ? -1 : 1) * (0.35 + (i % 3) * 0.08)}deg)` }}
+          >
+            <MentionGlyph kind={m.kind} />
+            <div className="card-title">{m.title}</div>
+            {m.note && <div className="hand card-note">{m.note}</div>}
+          </div>
+        ))
+      )}
+
+      <div className="mentions-foot hand">kept with this conversation — look after, not now</div>
+    </aside>
+  );
+}
+
 /** One row of underlined text toggles. */
 function ToggleRow({ label, note, options, value, onChange, disabled }) {
   return (
@@ -165,6 +438,9 @@ export default function App() {
   const [gender, setGender] = useState("female");
   const [mode, setMode] = useState("friend");
   const [error, setError] = useState(null);
+  const [board, setBoard] = useState([]);
+  const [mentions, setMentions] = useState([]);
+  const [boardSubject, setBoardSubject] = useState(null);
 
   // Show what the server will actually start the next session with, rather
   // than assuming our defaults match its globals.
@@ -186,6 +462,15 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Open with ?demo=board to see the panel without the backend wired up.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("demo") === "board") {
+      setBoard(DEMO_BOARD);
+      setBoardSubject("passé composé — être");
+      setMentions(DEMO_MENTIONS);
+    }
   }, []);
 
   const getClient = useCallback(() => {
@@ -218,6 +503,19 @@ export default function App() {
             audioRef.current.srcObject = new MediaStream([track]);
           }
         },
+        // The teacher writes on the board by sending a message from the
+        // server. Shape: { type: "board", entry: {...} } or
+        // { type: "board-subject", subject: "..." }.
+        onServerMessage: (msg) => {
+          if (!msg || typeof msg !== "object") return;
+          if (msg.type === "board" && msg.entry) {
+            setBoard((prev) => [...prev, { id: prev.length + 1, ...msg.entry }]);
+          } else if (msg.type === "mention" && msg.item) {
+            setMentions((prev) => [...prev, { id: prev.length + 1, ...msg.item }]);
+          } else if (msg.type === "board-subject") {
+            setBoardSubject(msg.subject ?? null);
+          }
+        },
         onError: (err) => {
           console.error(err);
           setError(typeof err === "string" ? err : err?.message || "Something went wrong.");
@@ -232,6 +530,9 @@ export default function App() {
 
   const handleConnect = useCallback(async () => {
     setError(null);
+    setBoard([]);
+    setBoardSubject(null);
+    setMentions([]);
     setConnectionState("connecting");
 
     try {
@@ -282,6 +583,8 @@ export default function App() {
   const personaName = PERSONA_NAMES[language][gender];
   const modeLabel = MODES.find((m) => m.id === mode)?.label ?? "";
   const languageLabel = LANGUAGES.find((l) => l.code === language)?.label ?? "";
+  const showBoard = mode === "teacher";
+  const showMentions = mode === "friend";
 
   return (
     <div className="fika">
@@ -350,10 +653,12 @@ export default function App() {
           </section>
         </main>
       ) : (
-        <main className="stage stage-live">
+        <main
+          className={`stage ${showBoard ? "stage-board" : showMentions ? "stage-mentions" : "stage-live"}`}
+        >
           <section className="live rise d1">
             <div className="name-row">
-              <SpeakerMark name={personaName} size={72} className="breathe" />
+              <SpeakerMark name={personaName} size={showBoard ? 62 : 72} className="breathe" />
               <h1 className="display">{personaName}</h1>
             </div>
             <span className="micro">
@@ -365,14 +670,16 @@ export default function App() {
               className={`wave ${botSpeaking ? "is-bot" : ""} ${userSpeaking ? "is-user" : ""}`}
               aria-hidden="true"
             >
-              {Array.from({ length: 14 }).map((_, i) => (
+              {Array.from({ length: showBoard ? 12 : 14 }).map((_, i) => (
                 <span className="bar" key={i} />
               ))}
             </div>
 
             <p className="live-status">
               {botSpeaking
-                ? `${personaName} is speaking.`
+                ? showBoard
+                  ? `${personaName} is explaining the last thing on the board.`
+                  : `${personaName} is speaking.`
                 : userSpeaking
                   ? "Go on, she's listening."
                   : "Answer out loud whenever you're ready. There's no timer on you."}
@@ -388,6 +695,9 @@ export default function App() {
 
             {error && <div className="error">{error}</div>}
           </section>
+
+          {showBoard && <Board entries={board} subject={boardSubject} />}
+          {showMentions && <Mentions items={mentions} />}
         </main>
       )}
     </div>
