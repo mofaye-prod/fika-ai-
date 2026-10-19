@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { PipecatClient } from "@pipecat-ai/client-js";
 import { SmallWebRTCTransport } from "@pipecat-ai/small-webrtc-transport";
 import "./fika.css";
+import { supabase, signInWithGoogle, signOut } from "./supabase";
+import Onboarding from "./Onboarding";
+import Profile from "./Profile";
 
 // Point these at your running bot.py server. Update once you deploy
 // instead of running locally.
@@ -10,6 +13,7 @@ const LANGUAGE_ENDPOINT = "http://localhost:7860/set-language";
 const PERSONA_ENDPOINT = "http://localhost:7860/set-persona";
 const MODE_ENDPOINT = "http://localhost:7860/set-mode";
 const SETTINGS_ENDPOINT = "http://localhost:7860/session-settings";
+const USER_ENDPOINT = "http://localhost:7860/set-user";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -138,7 +142,7 @@ function SpeakerMark({ name, size = 32, className = "" }) {
 /* ---------------------------------------------------------------
  * The session board.
  *
- * Entries arrive from the teacher as she writes, before she speaks
+ * Entries arrive from the teacher as they write, before they speak
  * about them. Four kinds cover what a language tutor actually puts
  * on a board:
  *
@@ -315,7 +319,7 @@ function Board({ entries, subject }) {
 
 
 /* ---------------------------------------------------------------
- * Friend mode: things she mentioned.
+ * Friend mode: things they mentioned.
  *
  * Same delivery as the board, deliberately quieter — no highlight,
  * no auto-scroll, nothing asking to be read mid-conversation.
@@ -324,9 +328,9 @@ function Board({ entries, subject }) {
  * ------------------------------------------------------------- */
 
 const DEMO_MENTIONS = [
-  { id: 1, kind: "song", title: "Angèle — Balance ton quoi", note: "stuck in her head all week" },
-  { id: 2, kind: "place", title: "La Croix-Rousse", note: "her quartier — the hill with all the stairs" },
-  { id: 3, kind: "food", title: "une quenelle", note: "what she ate Sunday — very lyonnais" },
+  { id: 1, kind: "artist", title: "Angèle — Balance ton quoi", note: "stuck in my head all week" },
+  { id: 2, kind: "place", title: "La Croix-Rousse", note: "my quartier — the hill with all the stairs" },
+  { id: 3, kind: "food", title: "une quenelle", note: "what I ate Sunday — very lyonnais" },
 ];
 
 function MentionGlyph({ kind }) {
@@ -358,7 +362,25 @@ function MentionGlyph({ kind }) {
           <path d="M13 15.5V2.8c-1.6.8-2.4 2.4-2.4 4.4s.8 2.6 2.4 2.6" {...common} />
         </>
       )}
-      {(!kind || kind === "thing") && (
+      {kind === "artist" && (
+        <>
+          <path d="M9 2.5a2.5 2.5 0 0 1 2.5 2.5v4a2.5 2.5 0 0 1-5 0V5A2.5 2.5 0 0 1 9 2.5z" {...common} />
+          <path d="M4 8.5a5 5 0 0 0 10 0M9 13.5V16" {...common} />
+        </>
+      )}
+      {kind === "film" && (
+        <>
+          <path d="M2.5 5.5h13v9h-13z" {...common} />
+          <path d="M2.5 8.5h13M6 5.5v3M12 5.5v3" {...common} />
+        </>
+      )}
+      {kind === "book" && (
+        <>
+          <path d="M3 3.5h5a2 2 0 0 1 2 2v9a1.6 1.6 0 0 0-1.6-1.6H3z" {...common} />
+          <path d="M15 3.5h-5a2 2 0 0 0-2 2v9a1.6 1.6 0 0 1 1.6-1.6H15z" {...common} />
+        </>
+      )}
+           {!["song", "artist", "place", "food", "film", "book"].includes(kind) && (
         <>
           <path d="M3.5 4.5h11v9h-11z" {...common} />
           <path d="M6 8h6M6 11h4" {...common} />
@@ -372,7 +394,7 @@ function Mentions({ items }) {
   return (
     <aside className="mentions">
       <div className="mentions-head">
-        <span className="micro">She mentioned</span>
+        <span className="micro">Mentions</span>
         <svg width="126" height="9" viewBox="0 0 126 9" aria-hidden="true">
           <path
             d="M2 5.4c22-2.6 44-3.4 66-2.6s36 2.2 56 1"
@@ -386,7 +408,7 @@ function Mentions({ items }) {
 
       {items.length === 0 ? (
         <p className="hand mentions-empty">
-          Anything she brings up — a song, a place — lands here.
+          Anything they bring up — a song, a place — lands here.
         </p>
       ) : (
         items.map((m, i) => (
@@ -432,6 +454,52 @@ function ToggleRow({ label, note, options, value, onChange, disabled }) {
     </div>
   );
 }
+const LANDING_LANGS = [
+  "Français", "English", "Español", "Italiano",
+  "Deutsch", "Português", "Nederlands", "Svenska",
+];
+
+function Landing({ onSignIn }) {
+  return (
+    <div className="landing">
+      <div className="landing-top">
+        <span className="landing-word">fika</span>
+        <button className="landing-signin" onClick={onSignIn}>Sign in</button>
+      </div>
+
+      <div className="landing-mid">
+        <svg width="104" height="124" viewBox="0 0 60 70" aria-hidden="true">
+          <g className="steam" fill="none" stroke="var(--accent)"
+             strokeWidth="2.4" strokeLinecap="round">
+            <path className="s1" d="M20 20c-3-3.4-3-6.6 0-10s3-6.6 0-10" />
+            <path className="s2" d="M30 18c-3-3.4-3-6.6 0-10s3-6.6 0-10" />
+            <path className="s3" d="M40 20c-3-3.4-3-6.6 0-10s3-6.6 0-10" />
+          </g>
+          <g className="cup" fill="none" stroke="var(--ink)" strokeWidth="2.6"
+             strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 36h30v13a11 11 0 0 1-11 11h-8a11 11 0 0 1-11-11z" />
+            <path d="M42 40h5a6 6 0 0 1 0 12h-5" />
+          </g>
+        </svg>
+
+        <div className="marquee">
+          <div className="track">
+            {[...LANDING_LANGS, ...LANDING_LANGS].map((l, i) => (
+              <span key={i}>{l}</span>
+            ))}
+          </div>
+        </div>
+
+        <button className="landing-cta" onClick={onSignIn}>Start talking</button>
+      </div>
+
+      <div className="landing-bottom">
+        <span className="landing-micro">A conversation, not a course</span>
+        <span className="landing-note">hello@fika.app</span>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const clientRef = useRef(null);
@@ -446,6 +514,11 @@ export default function App() {
   const [board, setBoard] = useState([]);
   const [mentions, setMentions] = useState([]);
   const [boardSubject, setBoardSubject] = useState(null);
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [profileReady, setProfileReady] = useState(false);
+  const [view, setView] = useState("talk");
 
   // Show what the server will actually start the next session with, rather
   // than assuming our defaults match its globals.
@@ -477,6 +550,37 @@ export default function App() {
       setMentions(DEMO_MENTIONS);
     }
   }, []);
+    useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+    useEffect(() => {
+    if (!session) {
+      setProfile(null);
+      setProfileReady(true);
+      return;
+    }
+    let cancelled = false;
+    setProfileReady(false);
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setProfile(data ?? null);
+        setProfileReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   const getClient = useCallback(() => {
     if (clientRef.current) return clientRef.current;
@@ -558,6 +662,15 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode }),
       });
+      await fetch(USER_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+          user_id: session?.user?.id ?? null,
+          cefr_level: profile?.levels?.[language] ?? null,
+          age_range: profile?.age_range ?? null,
+        }),
+      });
     } catch (err) {
       console.error("Couldn't set session options, connecting with server defaults:", err);
     }
@@ -570,7 +683,7 @@ export default function App() {
       setError(err?.message || "Couldn't reach the bot server. Is it running?");
       setConnectionState("idle");
     }
-  }, [getClient, language, gender, mode]);
+   }, [getClient, language, gender, mode, session, profile]);
 
   const handleDisconnect = useCallback(async () => {
     setConnectionState("disconnecting");
@@ -592,14 +705,45 @@ export default function App() {
   const languageLabel = LANGUAGES.find((l) => l.code === language)?.label ?? "";
   const showBoard = mode === "teacher";
   const showMentions = mode === "friend";
-
-  return (
+  
+   if(!authReady) return <div className="fika" />;
+   if (!session) return <Landing onSignIn={signInWithGoogle} />;
+   if (!profileReady) return <div className="fika" />;
+   if (!profile) return <Onboarding session={session} onComplete={setProfile} />;
+  if (view === "you")
+    return (
+      <Profile
+        session={session}
+        profile={profile}
+        onProfileChange={setProfile}
+        onBack={() => setView("talk")}
+        SpeakerMark={SpeakerMark}
+        Board={Board}
+        Mentions={Mentions}
+      />
+    );
+   
+   return (
     <div className="fika">
       <audio ref={audioRef} autoPlay playsInline />
 
-      <header className="topbar">
-        <span className="wordmark">Fika</span>
-        <span className="micro">{isConnected ? `${languageLabel} · ${modeLabel}` : whenItIs()}</span>
+    <header className="topbar">
+        <span className="wordmark">fika</span>
+        <span className="topbar-right">
+          <span className="micro">
+            {isConnected ? `${languageLabel} · ${modeLabel}` : whenItIs()}
+          </span>
+          {!isConnected && (
+            <button className="linkbtn" onClick={() => setView("you")}>
+              You
+            </button>
+          )}
+          {!isConnected && (
+            <button className="linkbtn" onClick={signOut}>
+              Sign out
+            </button>
+          )}
+        </span>
       </header>
 
       {!isConnected ? (
@@ -688,7 +832,7 @@ export default function App() {
                   ? `${personaName} is explaining the last thing on the board.`
                   : `${personaName} is speaking.`
                 : userSpeaking
-                  ? "Go on, she's listening."
+                  ? "Go on — you've got the floor."
                   : "Answer out loud whenever you're ready. There's no timer on you."}
             </p>
 
