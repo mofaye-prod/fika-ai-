@@ -75,7 +75,24 @@ CURRENT_AGE_RANGE = None
 
 # What the persona wrote during this session. Reset when one starts, saved
 # when it ends — the panels are ephemeral in the browser, this is the record.
-SESSION_LOG = {"board": [], "mentions": [], "board_subject": None}
+class Session:
+    """Everything belonging to one conversation, and nothing that doesn't.
+
+    The CURRENT_* globals above are not the live state of a call — they're
+    the settings the next session will start with. A Session snapshots them
+    once, at connect, and owns its own board and mentions from then on.
+    """
+
+    def __init__(self):
+        self.language = CURRENT_LANGUAGE
+        self.gender = CURRENT_GENDER
+        self.mode = CURRENT_MODE
+        self.cefr = CURRENT_CEFR
+        self.age_range = CURRENT_AGE_RANGE
+        self.user_id = CURRENT_USER_ID
+        self.board = []
+        self.mentions = []
+        self.board_subject = None
 
 
 # ---------------------------------------------------------------------------
@@ -477,27 +494,36 @@ MENTION_RULES = {
 async def _send(params, payload):
     await params.llm.push_frame(RTVIServerMessageFrame(data=payload))
 
-async def handle_write_on_board(params: FunctionCallParams):
-    entry = {k: v for k, v in params.arguments.items() if v is not None}
-    if entry.get("kind") == "table" and isinstance(entry.get("rows"), list):
-        entry["rows"] = [r if isinstance(r, list) else [r, ""] for r in entry["rows"]]
-    SESSION_LOG["board"].append(entry)
-    await _send(params, {"type": "board", "entry": entry})
-    await params.result_callback({"written": True})
+def make_handlers(session):
+    """Tool handlers bound to one session, so two calls can't cross wires."""
 
+    async def handle_write_on_board(params: FunctionCallParams):
+        entry = {k: v for k, v in params.arguments.items() if v is not None}
+        if entry.get("kind") == "table" and isinstance(entry.get("rows"), list):
+            entry["rows"] = [
+                r if isinstance(r, list) else [r, ""] for r in entry["rows"]
+            ]
+        session.board.append(entry)
+        await _send(params, {"type": "board", "entry": entry})
+        await params.result_callback({"written": True})
 
-async def handle_set_board_subject(params: FunctionCallParams):
-    subject = params.arguments.get("subject")
-    SESSION_LOG["board_subject"] = subject
-    await _send(params, {"type": "board-subject", "subject": subject})
-    await params.result_callback({"ok": True})
+    async def handle_set_board_subject(params: FunctionCallParams):
+        subject = params.arguments.get("subject")
+        session.board_subject = subject
+        await _send(params, {"type": "board-subject", "subject": subject})
+        await params.result_callback({"ok": True})
 
+    async def handle_note_mention(params: FunctionCallParams):
+        item = {k: v for k, v in params.arguments.items() if v is not None}
+        session.mentions.append(item)
+        await _send(params, {"type": "mention", "item": item})
+        await params.result_callback({"noted": True})
 
-async def handle_note_mention(params: FunctionCallParams):
-    item = {k: v for k, v in params.arguments.items() if v is not None}
-    SESSION_LOG["mentions"].append(item)
-    await _send(params, {"type": "mention", "item": item})
-    await params.result_callback({"noted": True})
+    return {
+        "write_on_board": handle_write_on_board,
+        "set_board_subject": handle_set_board_subject,
+        "note_mention": handle_note_mention,
+    }
 
 WRITE_ON_BOARD = FunctionSchema(
     name="write_on_board",
@@ -570,11 +596,6 @@ TOOLS_BY_MODE = {
     "friend": [NOTE_MENTION],
 }
 
-HANDLERS = {
-    "write_on_board": handle_write_on_board,
-    "set_board_subject": handle_set_board_subject,
-    "note_mention": handle_note_mention,
-}
 
 
 from fastapi import Request
@@ -860,7 +881,9 @@ def memory_block(user_id, language):
     template = MEMORY_BLOCK.get(language, MEMORY_BLOCK["en"])
     return template.format(lines=body)
 
-def build_system_prompt(language: str, gender: str, mode: str, cefr_level: str) -> str:
+def build_system_prompt(
+    language: str, gender: str, mode: str, cefr_level: str, age_range: str = None
+) -> str:    
     """Compose the system prompt for one session.
 
     The character block says who the persona is and is shared by every mode;
@@ -887,11 +910,11 @@ def build_system_prompt(language: str, gender: str, mode: str, cefr_level: str) 
             "how they speak in the first few minutes."
         )
 
-    if CURRENT_AGE_RANGE:
+    if age_range:
         age_clause = (
-            f", tu as environ {CURRENT_AGE_RANGE} ans"
+            f", tu as environ {age_range} ans"
             if language == "fr"
-            else f", around {CURRENT_AGE_RANGE} years old"
+            else f", around {age_range} years old"
         )
     else:
         age_clause = ""
@@ -907,19 +930,17 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     """Run the voice bot for this session."""
     logger.info("Starting bot")
 
-    SESSION_LOG["board"] = []
-    SESSION_LOG["mentions"] = []
-    SESSION_LOG["board_subject"] = None
+    session = Session()
 
     aiohttp_session = aiohttp.ClientSession()
 
-    lang = LANGUAGE_CONFIG[CURRENT_LANGUAGE]
-    persona = PERSONA_CONFIG[CURRENT_LANGUAGE][CURRENT_GENDER]
-    mode = MODE_CONFIG[CURRENT_MODE][CURRENT_LANGUAGE]
+    lang = LANGUAGE_CONFIG[session.language]
+    persona = PERSONA_CONFIG[session.language][session.gender]
+    mode = MODE_CONFIG[session.mode][session.language]
 
     logger.info(
-        f"Session settings — language: {CURRENT_LANGUAGE}, "
-        f"persona: {persona['name']}, mode: {CURRENT_MODE}, level: {CURRENT_CEFR}"
+        f"Session settings — language: {session.language}, "
+        f"persona: {persona['name']}, mode: {session.mode}, level: {session.cefr}"
     )
 
     # Speech-to-Text service (ElevenLabs Scribe)
@@ -940,17 +961,18 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         api_key=os.getenv("ANTHROPIC_API_KEY"),
         settings=AnthropicLLMService.Settings(
             model="claude-sonnet-4-6",
-            system_instruction=build_system_prompt(
-                CURRENT_LANGUAGE,
-                CURRENT_GENDER,
-                CURRENT_MODE,
-                CURRENT_CEFR,
-            )  + memory_block(CURRENT_USER_ID, CURRENT_LANGUAGE),
+             system_instruction=build_system_prompt(
+                session.language,
+                session.gender,
+                session.mode,
+                session.cefr,
+                session.age_range,
+            ) + memory_block(session.user_id, session.language),
         ),
     )
 
-    context = LLMContext(tools=TOOLS_BY_MODE.get(CURRENT_MODE, []))
-    for fn_name, fn_handler in HANDLERS.items():
+    context = LLMContext(tools=TOOLS_BY_MODE.get(session.mode, []))
+    for fn_name, fn_handler in make_handlers(session).items():
         llm.register_function(fn_name, fn_handler)
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
         context,
@@ -978,16 +1000,16 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         observers=[],
     )
    
-    remembered = recent_recap_lines(CURRENT_USER_ID, CURRENT_LANGUAGE)
-    returning = has_history(CURRENT_USER_ID, CURRENT_LANGUAGE)
+    remembered = recent_recap_lines(session.user_id, session.language)
+    returning = has_history(session.user_id, session.language)
     
     @worker.rtvi.event_handler("on_client_ready")
     async def on_client_ready(rtvi):
-        bank = OPENERS.get(CURRENT_MODE, {}).get(CURRENT_LANGUAGE, [])
+        bank = OPENERS.get(session.mode, {}).get(session.language, [])
         nudge = random.choice(bank) if bank else ""
         if returning:
             opening = RETURNING_OPENING.get(
-                CURRENT_LANGUAGE, RETURNING_OPENING["en"]
+                session.language, RETURNING_OPENING["en"]
             )
             if not remembered:
                 opening = opening + " " + nudge
@@ -1004,19 +1026,19 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("Client disconnected")
-        recap = await make_recap(context.messages, CURRENT_LANGUAGE)
+        recap = await make_recap(context.messages, session.language)
         try:
             supabase.table("sessions").insert({
-                "language": CURRENT_LANGUAGE,
-                "user_id": CURRENT_USER_ID,
+                "language": session.language,
+                "user_id": session.user_id,
                 "transcript": context.messages,
-                "mode": CURRENT_MODE,
+                "mode": session.mode,
                 "recap": recap,
                 "board": {
-                    "subject": SESSION_LOG["board_subject"],
-                    "entries": SESSION_LOG["board"],
+                    "subject": session.board_subject,
+                    "entries": session.board,
                 },
-                "mentions": SESSION_LOG["mentions"],
+                "mentions": session.mentions,
             }).execute()
         except Exception as e:
             logger.error(f"Failed to save session to Supabase: {e}")
