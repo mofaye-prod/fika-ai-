@@ -5,15 +5,27 @@ import "./fika.css";
 import { supabase, signInWithGoogle, signOut } from "./supabase";
 import Onboarding from "./Onboarding";
 import Profile from "./Profile";
+import { DailyTransport } from "@pipecat-ai/daily-transport";
 
 // Point these at your running bot.py server. Update once you deploy
 // instead of running locally.
-const SERVER_URL = "http://localhost:7860/api/offer";
-const LANGUAGE_ENDPOINT = "http://localhost:7860/set-language";
-const PERSONA_ENDPOINT = "http://localhost:7860/set-persona";
-const MODE_ENDPOINT = "http://localhost:7860/set-mode";
-const SETTINGS_ENDPOINT = "http://localhost:7860/session-settings";
-const USER_ENDPOINT = "http://localhost:7860/set-user";
+const BOT_URL = (
+  import.meta.env.VITE_BOT_URL ?? "http://localhost:7860"
+).replace(/\/$/, "");
+
+const SERVER_URL = `${BOT_URL}/api/offer`;
+const LANGUAGE_ENDPOINT = `${BOT_URL}/set-language`;
+const PERSONA_ENDPOINT = `${BOT_URL}/set-persona`;
+const MODE_ENDPOINT = `${BOT_URL}/set-mode`;
+const SETTINGS_ENDPOINT = `${BOT_URL}/session-settings`;
+const USER_ENDPOINT = `${BOT_URL}/set-user`;
+
+// In production we start a session through our own /api/connect, which holds
+// the Pipecat Cloud key. Locally we talk to the bot on localhost directly.
+const CONNECT_URL =
+  import.meta.env.VITE_CONNECT_URL ??
+  (import.meta.env.PROD ? "/api/connect" : null);
+const USE_CLOUD = Boolean(CONNECT_URL);
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -523,6 +535,7 @@ export default function App() {
   // Show what the server will actually start the next session with, rather
   // than assuming our defaults match its globals.
   useEffect(() => {
+    if (USE_CLOUD) return;
     let cancelled = false;
     (async () => {
       try {
@@ -586,7 +599,7 @@ export default function App() {
     if (clientRef.current) return clientRef.current;
 
     const client = new PipecatClient({
-      transport: new SmallWebRTCTransport(),
+      transport: USE_CLOUD ? new DailyTransport() : new SmallWebRTCTransport(),
       enableMic: true,
       enableCam: false,
       callbacks: {
@@ -646,44 +659,73 @@ export default function App() {
     }
     setConnectionState("connecting");
 
-    try {
-      await fetch(LANGUAGE_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ language }),
-      });
-      await fetch(PERSONA_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gender }),
-      });
-      await fetch(MODE_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
-      });
-      await fetch(USER_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+    const settings = {
+      language,
+      gender,
+      mode,
+      cefr_level: profile?.levels?.[language] ?? null,
+      age_range: profile?.age_range ?? null,
+    };
+
+    if (!USE_CLOUD) {
+      try {
+        await fetch(LANGUAGE_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ language }),
+        });
+        await fetch(PERSONA_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ gender }),
+        });
+        await fetch(MODE_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode }),
+        });
+        await fetch(USER_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-          user_id: session?.user?.id ?? null,
-          cefr_level: profile?.levels?.[language] ?? null,
-          age_range: profile?.age_range ?? null,
-        }),
-      });
-    } catch (err) {
-      console.error("Couldn't set session options, connecting with server defaults:", err);
+            ...settings,
+            user_id: session?.user?.id ?? null,
+          }),
+        });
+      } catch (err) {
+        console.error("Couldn't set session options:", err);
+      }
     }
 
     const client = getClient();
     try {
-      await client.connect({ connection_url: SERVER_URL });
+      if (USE_CLOUD) {
+        // Ask for the session here rather than using state: getSession refreshes
+        // an expired token, which a long-idle tab may be holding.
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        if (!accessToken) throw new Error("Please sign in again.");
+
+        const res = await fetch(CONNECT_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(settings),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const { dailyRoom, dailyToken } = await res.json();
+        await client.connect({ url: dailyRoom, token: dailyToken });
+      } else {
+        await client.connect({ connection_url: SERVER_URL });
+      }
     } catch (err) {
       console.error(err);
-      setError(err?.message || "Couldn't reach the bot server. Is it running?");
+      setError(err?.message || "Couldn't reach the bot. Is it running?");
       setConnectionState("idle");
     }
-   }, [getClient, language, gender, mode, session, profile]);
+  }, [getClient, language, gender, mode, session, profile]);
 
   const handleDisconnect = useCallback(async () => {
     setConnectionState("disconnecting");

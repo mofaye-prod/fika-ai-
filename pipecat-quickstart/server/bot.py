@@ -83,17 +83,19 @@ class Session:
     once, at connect, and owns its own board and mentions from then on.
     """
 
-    def __init__(self):
-        self.language = CURRENT_LANGUAGE
-        self.gender = CURRENT_GENDER
-        self.mode = CURRENT_MODE
-        self.cefr = CURRENT_CEFR
-        self.age_range = CURRENT_AGE_RANGE
-        self.user_id = CURRENT_USER_ID
+    def __init__(self, body=None):
+        # Deployed, settings arrive in the start request. Locally they come
+        # from the /set-* endpoints, which is what the globals are for.
+        body = body or {}
+        self.language = body.get("language") or CURRENT_LANGUAGE
+        self.gender = body.get("gender") or CURRENT_GENDER
+        self.mode = body.get("mode") or CURRENT_MODE
+        self.cefr = body.get("cefr_level") or CURRENT_CEFR
+        self.age_range = body.get("age_range") or CURRENT_AGE_RANGE
+        self.user_id = body.get("user_id") or CURRENT_USER_ID
         self.board = []
         self.mentions = []
         self.board_subject = None
-
 
 # ---------------------------------------------------------------------------
 # Who the persona is: identity and speaking rules, shared by every mode.
@@ -600,6 +602,24 @@ TOOLS_BY_MODE = {
 
 from fastapi import Request
 from pipecat.runner.run import app
+from fastapi.middleware.cors import CORSMiddleware
+
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,https://fika-ai-zeta.vercel.app",
+    ).split(",")
+    if o.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 PERSONA_CONFIG = {
     "fr": {
@@ -925,12 +945,12 @@ def build_system_prompt(
         level_intro=level_intro,
     )
 
-
+   
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> None:
     """Run the voice bot for this session."""
     logger.info("Starting bot")
 
-    session = Session()
+    session = Session(getattr(runner_args, "body", None))
 
     aiohttp_session = aiohttp.ClientSession()
 
